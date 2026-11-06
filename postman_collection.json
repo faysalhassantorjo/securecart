@@ -1,0 +1,401 @@
+{
+  "info": {
+    "name": "SecureCart API",
+    "description": "Postman collection for SecureCart backend demonstrating AES-256-GCM encryption at rest and Role-Based Access Control.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "customer_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Register New Customer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.tokens && jsonData.tokens.access) {",
+                  "    pm.collectionVariables.set('customer_token', jsonData.tokens.access);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"new_shopper\",\n  \"email\": \"shopper@example.com\",\n  \"password\": \"SecurePass123!\",\n  \"password_confirm\": \"SecurePass123!\",\n  \"first_name\": \"Jane\",\n  \"last_name\": \"Doe\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/register/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "register", ""]
+            }
+          }
+        },
+        {
+          "name": "Obtain Customer JWT Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.access) {",
+                  "    pm.collectionVariables.set('customer_token', jsonData.access);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"customer1\",\n  \"password\": \"CustomerPass123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/token/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "token", ""]
+            }
+          }
+        },
+        {
+          "name": "Obtain Admin JWT Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.access) {",
+                  "    pm.collectionVariables.set('admin_token', jsonData.access);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"AdminPass123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/token/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "token", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Products",
+      "item": [
+        {
+          "name": "List Products (Authenticated)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/products/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", ""]
+            }
+          }
+        },
+        {
+          "name": "Create Product (Admin Only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Encrypted Backup Card\",\n  \"description\": \"NFC NFC backup card for BIP-39 recovery phrases\",\n  \"price\": \"45.00\",\n  \"stock_quantity\": 25\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/products/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Addresses",
+      "item": [
+        {
+          "name": "List My Saved Addresses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/addresses/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "addresses", ""]
+            }
+          }
+        },
+        {
+          "name": "Create New Address (Encrypted)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Alice Customer\",\n  \"street_address\": \"124 Conch Street\",\n  \"city\": \"Bikini Bottom\",\n  \"postal_code\": \"96970\",\n  \"phone_number\": \"+1-555-888-9999\",\n  \"email\": \"alice.secure@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/addresses/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "addresses", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Checkout & Orders",
+      "item": [
+        {
+          "name": "Execute Checkout (AES-256-GCM Encrypted)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"quantity\": 1\n    },\n    {\n      \"product_id\": 2,\n      \"quantity\": 2\n    }\n  ],\n  \"recipient_name\": \"Alice Customer\",\n  \"phone_number\": \"+1-555-123-4567\",\n  \"email\": \"alice.checkout@example.com\",\n  \"delivery_address\": \"742 Evergreen Terrace\",\n  \"delivery_city\": \"Springfield\",\n  \"delivery_postal_code\": \"97477\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/checkout/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "checkout", ""]
+            }
+          }
+        },
+        {
+          "name": "List Customer Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/orders/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "orders", ""]
+            }
+          }
+        },
+        {
+          "name": "Retrieve Own Order Detail (Decrypted)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/orders/1/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "orders", "1", ""]
+            }
+          }
+        },
+        {
+          "name": "List Customer Order Addresses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/order-addresses/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "order-addresses", ""]
+            }
+          }
+        },
+        {
+          "name": "Retrieve Own Order Address by ID (Decrypted)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/order-addresses/1/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "order-addresses", "1", ""]
+            }
+          }
+        },
+        {
+          "name": "Retrieve Order Address by Order ID (Decrypted)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/orders/1/address/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "orders", "1", "address", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Admin Operations & Auditing",
+      "item": [
+        {
+          "name": "Admin View All Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/orders/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "orders", ""]
+            }
+          }
+        },
+        {
+          "name": "Admin View All Order Addresses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/order-addresses/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "order-addresses", ""]
+            }
+          }
+        },
+        {
+          "name": "Admin View Security Audit Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/security-events/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "security-events", ""]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
