@@ -1,83 +1,104 @@
 # Security Architecture & Cryptography Policy: SecureCart
 
-This document describes the security controls, cryptographic design, key management practices, and known limitations for the **SecureCart** demonstration platform.
+This document outlines the cryptographic specifications, key management practices, authorization boundaries, and security controls implemented in **SecureCart**.
 
 ---
 
-## 1. Threat Model & Scope
+## 1. Threat Model & Protected Assets
 
-### Protected Assets
-- **Personally Identifiable Information (PII)**: Customer phone numbers and email addresses.
-- **Order Snapshots**: Historical delivery contact details associated with financial transactions.
-- **Data Integrity**: Prevention of database tampering, price manipulation, and stock overselling.
-- **Authorization Boundaries**: Protection against Insecure Direct Object References (IDOR/BOLA).
+SecureCart is designed to protect customer data under the following threat assumptions:
 
-### Adversary Assumptions
-- **Compromised Database / Storage Dump**: If an attacker gains read access to the PostgreSQL database or a backup file, customer phone numbers and email addresses remain encrypted at rest and unreadable without the encryption key.
-- **Malicious API Clients**: Attackers attempting to modify product prices, inject fake order totals, or tamper with order IDs in API paths.
-- **Untrusted Staff**: Non-compliance administrative staff cannot view decrypted customer PII without explicit Django permissions, and all administrative access to decrypted data is permanently audited.
+- **Compromised Storage / Database Dump**: If an adversary gains unauthorized read access to the database or backups, customer Personally Identifiable Information (PII) remains encrypted at rest and unreadable without the secret key.
+- **Malicious API Clients / Tampering**: Prevention of client-side price modification, quantity manipulation, and bit-level ciphertext alteration.
+- **Insecure Direct Object References (IDOR/BOLA)**: Strict query scoping prevents unauthorized users from inspecting or enumerating other users' orders and addresses.
+- **Untrusted Staff / Internal Privilege Abuse**: Administrative users cannot view decrypted customer PII without explicit permissions, and all administrative reads are audited.
+
+### Protected Data Fields
+- **Customer Addresses**: `encrypted_phone`, `encrypted_email`, and order street address snapshots.
+- **Orders**: `encrypted_phone` and `encrypted_email` captured as immutable snapshots during checkout.
 
 ---
 
-## 2. Cryptographic Design: AES-256-GCM
+## 2. Cryptographic Design (AES-256-GCM)
 
-SecureCart implements **Application-Level Field Encryption** using Authenticated Encryption with Associated Data (AEAD).
+SecureCart uses **Application-Level Field Encryption** via Authenticated Encryption with Associated Data (AEAD).
 
 | Parameter | Specification | Purpose |
 |---|---|---|
-| **Algorithm** | **AES-256-GCM** | Advanced Encryption Standard in Galois/Counter Mode. |
-| **Key Size** | 256 bits (32 bytes) | Maximum cryptographic resistance against brute-force attacks. |
-| **Nonce / IV** | 96 bits (12 bytes) | Generated dynamically using `os.urandom(12)` per encryption. Guarantees semantic security. |
-| **Authentication Tag** | 128 bits (16 bytes) | Verifies ciphertext integrity and authenticity prior to decryption. |
-| **Payload Envelope** | `Base64( Nonce [12B] + Ciphertext [NB] + Tag [16B] )` | Compact, URL-safe database storage format. |
+| **Cipher** | **AES-256-GCM** | Authenticated symmetric encryption combining confidentiality and integrity. |
+| **Key Size** | 256 bits (32 bytes) | High-strength resistance against brute-force attacks. |
+| **Nonce / IV** | 96 bits (12 bytes) | Generated dynamically via `os.urandom(12)` per encryption. Guarantees semantic security. |
+| **Auth Tag** | 128 bits (16 bytes) | Verifies ciphertext integrity and authenticity prior to decryption. |
+| **Payload Envelope** | `Base64( Nonce [12B] + Ciphertext [NB] + Tag [16B] )` | Compact, URL-safe string representation for database storage. |
 
-### Semantic Security (Fresh Nonces)
-Encrypting the identical phone number or email multiple times produces completely different ciphertexts. This prevents traffic analysis and database-level frequency analysis attacks.
-
-### Tamper Resistance (Fail-Safe Verification)
-If a single bit in the ciphertext or authentication tag is modified (e.g. by an attacker with direct SQL access), `cryptography.exceptions.InvalidTag` is raised immediately. Decryption fails safely without returning corrupted plaintext or leaking internal stack traces.
+### Security Guarantees
+- **Semantic Security**: Encrypting identical plaintext multiple times yields completely distinct ciphertexts due to fresh nonces, mitigating frequency analysis.
+- **Tamper Resistance**: If any bit of the ciphertext or tag is modified, decryption immediately raises `InvalidTag` and safely outputs `[DECRYPTION FAILED]` without leaking plaintext or internal stack traces.
 
 ---
 
 ## 3. Key Management
 
-### Development & Demo
-- The key is supplied via the `AES_SECRET_KEY` environment variable.
-- Stored as a 64-character hexadecimal string (32 bytes = 256 bits).
-- A `.env.example` file provides a placeholder key. **The `.env` file is git-ignored and never committed.**
+### Key Generation & Configuration
+The encryption key is supplied via the `AES_SECRET_KEY` environment variable as a 64-character hex string (32 bytes):
 
-### Generating an Encryption Key
 ```bash
+# Generate a secure 256-bit encryption key
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-### Production Security Recommendations
-In a production deployment, environment-variable key storage should be replaced with an enterprise key management solution:
-1. **Cloud KMS Integration**: Use AWS KMS, Google Cloud KMS, Azure Key Vault, or HashiCorp Vault.
-2. **Envelope Encryption (DEK/KEK)**: Encrypt customer records using a unique Data Encryption Key (DEK), while the Key Encryption Key (KEK) is protected and rotated inside Hardware Security Modules (HSMs).
-3. **Key Rotation Strategy**: Support dual-key decryption to re-encrypt existing database records progressively when transitioning keys.
+> **Warning:** Never commit `.env` or hardcode cryptographic keys into source control.
+
+### Production Recommendations
+- **KMS / HSM**: Use a hardware-backed key management service (AWS KMS, Google Cloud KMS, Azure Key Vault, or HashiCorp Vault).
+- **Envelope Encryption**: Implement a Data Encryption Key (DEK) / Key Encryption Key (KEK) hierarchy.
+- **Key Rotation**: Implement key version identifiers within payload envelopes to support dual-key decryption and gradual re-encryption during key rotation.
 
 ---
 
-## 4. Role-Based Access Control & Decryption Gating
+## 4. Authorization & Decryption Gating
 
-1. **Authentication**: All sensitive endpoints require JSON Web Tokens (JWT) signed using HMAC-SHA256 (`djangorestframework-simplejwt`).
-2. **Object-Level Authorization**:
-   - `get_queryset()` scopes customer queries strictly to `user=request.user`.
-   - Access attempts to other customers' orders return `404 Not Found` (rather than 403) to prevent IDOR resource enumeration.
-3. **Permission-Gated Decryption**:
-   - Customer owners can view their own decrypted contact information.
-   - Administrative users **only** receive decrypted customer PII if they hold the explicit Django permission `orders.view_sensitive_customer_data`.
-   - Staff without this permission receive `"[MASKED - INSUFFICIENT PERMISSION]"`.
-4. **Audit Logging**:
-   - Every administrative access to decrypted customer data triggers an immutable `ADMIN_SENSITIVE_DATA_ACCESS` audit event.
-   - Unauthorized IDOR attempts trigger `UNAUTHORIZED_ACCESS_ATTEMPT`.
-   - Decryption failures trigger `DECRYPTION_FAILURE`.
-   - **Plaintext PII and cryptographic keys are strictly never written to logs.**
+Access to sensitive decrypted fields is gated by strict role and object-level permissions:
+
+```
+[Incoming Request]
+        │
+        ▼
+Is User Authenticated? ──(No)──► 401 Unauthorized
+        │ (Yes)
+        ▼
+Does User Own Object? ───(Yes)─► Return Decrypted PII
+        │ (No)
+        ▼
+Is User Staff with 'orders.view_sensitive_customer_data'?
+        │
+        ├──(Yes)──► Return Decrypted PII + Log Audit Event
+        │
+        └──(No)───► Return '[MASKED - INSUFFICIENT PERMISSION]'
+```
+
+- **Object-Level Isolation (IDOR Defense)**: `get_queryset()` filters results to `user=request.user`. Queries attempting to access other users' entities return `404 Not Found` rather than `403` to prevent object enumeration.
+- **Permission Gating**: Customers can only view their own decrypted PII. Staff members without `orders.view_sensitive_customer_data` receive masked strings.
 
 ---
 
-## 5. Known Limitations & Trade-Offs
+## 5. Security Audit Logging
 
-- **Exact Searchability**: Because AES-GCM ciphertexts are non-deterministic (randomized nonces), SQL queries like `WHERE encrypted_phone = '...'` or `LIKE '%search%'` cannot be performed directly in PostgreSQL. For production systems requiring customer search by phone/email, a **Blind Index** (HMAC-SHA256 hash using a separate salt/key) or deterministic tokenization should be introduced.
-- **Key In-Memory Footprint**: In this demo, the encryption key is held in Python memory by `AESCipher`. In high-assurance environments, KMS RPC calls or ephemeral session memory should be utilized.
+Critical events are permanently recorded in an immutable audit log (`AuditLog`):
+
+| Event Type | Trigger Condition |
+|---|---|
+| `CHECKOUT_SUCCESS` | Customer successfully places an order. |
+| `UNAUTHORIZED_ACCESS_ATTEMPT` | User attempts to access a resource belonging to another account (IDOR). |
+| `ADMIN_SENSITIVE_DATA_ACCESS` | Staff member views decrypted customer PII. |
+| `DECRYPTION_FAILURE` | Ciphertext tampering or invalid tag encountered during decryption. |
+| `USER_REGISTRATION` | New customer account registered. |
+
+> **Strict Policy:** Plaintext PII, user passwords, and cryptographic keys are **never** written to application logs or audit tables.
+
+---
+
+## 6. Known Limitations & Trade-Offs
+
+1. **Non-Searchable Ciphertexts**: Because AES-GCM uses non-deterministic nonces, encrypted columns cannot be searched with SQL `WHERE encrypted_phone = '...'` or `LIKE` queries. For environments requiring exact-match lookups, implement an HMAC-SHA256 **Blind Index** with a separate dedicated salt/secret.
+2. **Process Memory Footprint**: The secret key is loaded into application memory. In ultra-secure deployments, consider offloading cryptographic operations to a dedicated KMS RPC endpoint.
