@@ -151,6 +151,11 @@ SPECTACULAR_SETTINGS = {
         "- **CUSTOMER**: Automatically assigned upon registration. Can create/view own orders and addresses. Cannot create/modify/delete products.\n"
         "- **MODERATOR**: Assigned by Superadmin or ADMIN. Can create and update product objects, but CANNOT delete products.\n"
         "- **ADMIN**: Assigned ONLY by system superadmin. Full catalog control (including deletion), cross-customer orders, decrypted customer PII, audit logs, and role management."
+        """Credentials for testing:\n
+        CUSTOMER    : username=nami, password=nami@1234\n
+        MODERATOR   : username=zoro, password=zoro@1234\n
+        ADMIN       : username=demo_admin, password=admin1234\n
+        """
     ),
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,

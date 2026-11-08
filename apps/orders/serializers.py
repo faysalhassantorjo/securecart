@@ -185,7 +185,6 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     items = OrderItemSerializer(many=True, read_only=True)
     order_address = OrderAddressSerializer(source="address", read_only=True)
-    order_addresses = OrderAddressSerializer(source="addresses", many=True, read_only=True)
 
     # Decrypted fields (gated by permission check)
     decrypted_phone = serializers.SerializerMethodField()
@@ -212,7 +211,6 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "encrypted_email",
             "items",
             "order_address",
-            "order_addresses",
             "created_at",
             "updated_at",
         ]

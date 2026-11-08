@@ -28,9 +28,43 @@ class Command(BaseCommand):
         call_command("setup_roles")
 
         customer_group = Group.objects.get(name="Customer")
+        moderator_group = Group.objects.get(name="Moderator")
         admin_group = Group.objects.get(name="Admin")
 
-        # 2. Create Admin user
+        # 2. Primary Test Credentials (Evaluation Demo Accounts)
+        # 2a. Customer: nami
+        nami, created = User.objects.get_or_create(
+            username="nami",
+            defaults={"email": "nami@securecart.local"},
+        )
+        nami.set_password("nami@1234")
+        nami.save()
+        nami.groups.add(customer_group)
+        self.stdout.write(self.style.SUCCESS("Provisioned test customer: 'nami' (Password: nami@1234)"))
+
+        # 2b. Moderator: zoro
+        zoro, created = User.objects.get_or_create(
+            username="zoro",
+            defaults={"email": "zoro@securecart.local"},
+        )
+        zoro.set_password("zoro@1234")
+        zoro.save()
+        zoro.groups.add(moderator_group)
+        self.stdout.write(self.style.SUCCESS("Provisioned test moderator: 'zoro' (Password: zoro@1234)"))
+
+        # 2c. Admin: demo_admin
+        demo_admin, created = User.objects.get_or_create(
+            username="demo_admin",
+            defaults={"email": "admin@securecart.local", "is_staff": True, "is_superuser": True},
+        )
+        demo_admin.is_staff = True
+        demo_admin.is_superuser = True
+        demo_admin.set_password("admin1234")
+        demo_admin.save()
+        demo_admin.groups.add(admin_group)
+        self.stdout.write(self.style.SUCCESS("Provisioned test admin: 'demo_admin' (Password: admin1234)"))
+
+        # 3. Create Additional Demo Users
         admin_user, created = User.objects.get_or_create(
             username="admin",
             defaults={"email": "admin@securecart.local", "is_staff": True, "is_superuser": True},
@@ -43,7 +77,6 @@ class Command(BaseCommand):
         else:
             self.stdout.write("Admin user already exists.")
 
-        # 3. Create Customer 1
         c1, created = User.objects.get_or_create(
             username="customer1",
             defaults={"email": "customer1@example.com"},
@@ -54,7 +87,6 @@ class Command(BaseCommand):
             c1.groups.add(customer_group)
             self.stdout.write(self.style.SUCCESS("Created customer: 'customer1' (Password: CustomerPass123!)"))
 
-        # 4. Create Customer 2
         c2, created = User.objects.get_or_create(
             username="customer2",
             defaults={"email": "customer2@example.com"},
@@ -101,7 +133,19 @@ class Command(BaseCommand):
             if created:
                 self.stdout.write(f"Created product: {p.name}")
 
-        # 6. Create Saved Address for customer1 with encrypted fields
+        # 6. Create Saved Address for demo customers with encrypted fields
+        if not Address.objects.filter(user=nami).exists():
+            Address.objects.create(
+                user=nami,
+                full_name="Nami Navigator",
+                street_address="100 Tangerine Grove Way",
+                city="Cocoyasi",
+                postal_code="98765",
+                encrypted_phone=encrypt_value("+1-555-826-4374"),
+                encrypted_email=encrypt_value("nami@securecart.local"),
+            )
+            self.stdout.write(self.style.SUCCESS("Created demo encrypted address for nami."))
+
         if not Address.objects.filter(user=c1).exists():
             Address.objects.create(
                 user=c1,
